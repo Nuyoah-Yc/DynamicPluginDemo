@@ -1,14 +1,11 @@
 // Host: com/example/host/MainActivity.kt
 package com.example.host
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
 
@@ -32,6 +29,12 @@ class MainActivity : ComponentActivity() {
 
         // 2) 加载插件
         PluginManager.load(this, pluginApk.absolutePath)
+
+        // 显示插件信息
+        val infoText = PluginManager.pluginInfo?.let {
+            "Plugin: ${it.packageName}\nVersion: ${it.versionName ?: "unknown"} (${it.versionCode})"
+        } ?: "插件信息读取失败"
+        findViewById<TextView>(R.id.tvInfo)?.text = infoText
 
         // 3) 启动 ProxyActivity，并指定插件类名（完整类名）
         findViewById<android.view.View>(R.id.btnLaunch)?.setOnClickListener {
