@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
 import android.content.res.Resources
+import android.os.Build
+import android.util.Log
 import dalvik.system.DexClassLoader
 import java.io.File
 
 object PluginManager {
+    private const val TAG = "PluginManager"
     @Volatile var classLoader: DexClassLoader? = null
         private set
     @Volatile var resources: Resources? = null
@@ -17,25 +20,35 @@ object PluginManager {
     @Volatile var themeResId: Int = 0
         private set
 
+    @Volatile var pluginInfo: PluginInfo? = null
+        private set
+
+    fun isLoaded(): Boolean = classLoader != null
+    
     fun load(context: Context, apkPath: String) {
+        Log.d(TAG, "load: $apkPath")
+        val apkFile = File(apkPath)
+        require(apkFile.exists()) { "Plugin apk not found: $apkPath" }
+
         // 1) DexClassLoader
         val optDir = File(context.filesDir, "plugin_opt").apply { mkdirs() }
         classLoader = DexClassLoader(apkPath, optDir.absolutePath, null, context.classLoader)
+        Log.d(TAG, "DexClassLoader initialized")
 
         // 2) 合并宿主与插件 Asset 路径（宿主先、插件后，后者优先）
         val am = AssetManager::class.java.newInstance()
         val addAssetPath = AssetManager::class.java.getMethod("addAssetPath", String::class.java)
-        // 宿主 apk
-        addAssetPath.invoke(am, context.applicationInfo.sourceDir)
-        // 插件 apk
-        addAssetPath.invoke(am, apkPath)
+        addAssetPath.invoke(am, context.applicationInfo.sourceDir) // 宿主 apk
+        addAssetPath.invoke(am, apkPath) // 插件 apk
         assets = am
+        Log.d(TAG, "AssetManager merged")
 
         // 3) 用合并后的 AssetManager 构造 Resources
         val hostRes = context.resources
         resources = Resources(am, hostRes.displayMetrics, hostRes.configuration)
+        Log.d(TAG, "Resources ready")
 
-        // 4) 读取插件 Application 主题 id（给 ProxyActivity 叠加用）
+        // 4) 读取插件 Application 主题 id（给 ProxyActivity 叠加用）以及插件信息
         val pm = context.packageManager
         val pkgInfo = pm.getPackageArchiveInfo(apkPath, PackageManager.GET_META_DATA)
         val appInfo = pkgInfo?.applicationInfo?.apply {
@@ -44,5 +57,10 @@ object PluginManager {
             publicSourceDir = apkPath
         }
         themeResId = appInfo?.theme ?: 0
+        pluginInfo = pkgInfo?.let {
+            val versionCode = if (Build.VERSION.SDK_INT >= 28) it.longVersionCode else it.versionCode.toLong()
+            PluginInfo(it.packageName ?: "", it.versionName, versionCode)
+        }
+        Log.d(TAG, "Plugin info: $pluginInfo")
     }
 }
